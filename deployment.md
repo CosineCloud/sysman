@@ -25,13 +25,27 @@ The repository's **Test and publish containers** workflow tests the application 
 
 Wait for the workflow to succeed before pulling a new image. Source push and image publication are separate operations. Immutable `sha-...` tags are published alongside latest; use a verified SHA tag to pin a deployment.
 
-GitHub Container Registry packages are private on first publication, even for a public source repository. For anonymous pulls, the owner must set each package's **Package settings → Change visibility → Public** once. Alternatively authenticate on the Pi using a GitHub classic PAT with `read:packages`:
+GitHub Container Registry packages are private on first publication, even for a public source repository. For anonymous pulls, the owner must set each package's **Package settings → Change visibility → Public** once. Alternatively authenticate on the Pi using a **personal access token (classic)** with `read:packages`. Your GitHub account password and fine-grained tokens cannot be used for this GHCR login.
+
+1. Open [Create a classic token with read:packages](https://github.com/settings/tokens/new?scopes=read:packages).
+2. Give it a name, set an expiration, select **read:packages**, and generate it. The token owner must have access to the packages. Authorize the token for SSO if your organization requires it.
+3. On the Pi, run the command below. Use the GitHub username of the account that created the token; `CosineCloud` applies only if that is the token owner's account. A Raspberry Pi/Linux username or an organization name is not a substitute.
+4. At `Password:`, paste the **token**, not your GitHub password. Nothing appears while pasting; press Enter. Success prints `Login Succeeded`.
 
 ```sh
 docker login ghcr.io --username CosineCloud
 ```
 
-Enter the PAT at the password prompt. Do not put it into this repository, compose files or shell command arguments. See GitHub's [Container registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+After login, verify access:
+
+```sh
+docker pull ghcr.io/cosinecloud/sysman:latest
+docker pull ghcr.io/cosinecloud/sysman-agent:latest
+```
+
+If login returns `denied: denied`, check that the token is classic, unexpired and has read:packages, and that the username matches its owner. If login succeeds but pulling fails, check that the owner has access to both packages and any required organization SSO authorization. Alternatively, make both packages public and pull without logging in.
+
+Do not share your token in chat or put it into this repository, compose files or shell command arguments. See GitHub's [Container registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
 
 ## Run SysMan
 
