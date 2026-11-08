@@ -76,8 +76,10 @@ jobs:
       - name: Run architecture compatibility checks
         if: github.event_name != 'pull_request'
         run: |
+          docker buildx imagetools inspect --raw "ghcr.io/cosinecloud/${{ matrix.image }}@${{ steps.build.outputs.digest }}" > image-index.json
           for architecture in linux/amd64 linux/arm64 linux/arm/v7; do
+            manifest=$(python3 -c 'import json,sys; p=sys.argv[1].split("/"); print(next(m["digest"] for m in json.load(sys.stdin)["manifests"] if m["platform"].get("os")==p[0] and m["platform"].get("architecture")==p[1] and (len(p)<3 or m["platform"].get("variant")==p[2])))' "$architecture" < image-index.json)
             docker run --rm --platform "$architecture" --entrypoint python3 \
-              "ghcr.io/cosinecloud/${{ matrix.image }}@${{ steps.build.outputs.digest }}" \
+              "ghcr.io/cosinecloud/${{ matrix.image }}@$manifest" \
               -c 'import platform,subprocess,server,scheduling; from zoneinfo import ZoneInfo; print(platform.machine()); print(ZoneInfo("America/Chicago")); subprocess.run(["curl","--version"],check=True)'
           done
