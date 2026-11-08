@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+agents/
+.DS_Store
+sample_agent/security.json
+sample_agent/agent.json
+sample_agent/config.json
+sample_agent/logs.json
+sample_agent/demo_source/
+sample_agent/backup_output/
+sample_agent/backup-state.json
+sample_agent/backups/

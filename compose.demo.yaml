@@ -1,0 +1,52 @@
+services:
+  sysman:
+    environment:
+      CURL_CA_BUNDLE: /certs/ca-bundle.crt
+    volumes:
+      - agent-certs:/certs:ro
+    networks:
+      agent-net:
+        ipv4_address: 172.30.86.2
+
+  backup-agent:
+    image: ghcr.io/cosinecloud/sysman-agent:latest
+    build:
+      context: .
+      target: agent
+    init: true
+    restart: unless-stopped
+    volumes:
+      - agent-data:/data
+      - agent-certs:/certs:ro
+    networks:
+      agent-net:
+        ipv4_address: 172.30.86.3
+    stop_grace_period: 15s
+    security_opt:
+      - no-new-privileges:true
+
+  agent-init:
+    image: ghcr.io/cosinecloud/sysman-agent:latest
+    profiles: [setup]
+    entrypoint: [python3, sample_agent/runner.py]
+    command: [--init]
+    volumes:
+      - agent-data:/data
+
+  cert-init:
+    image: ghcr.io/cosinecloud/sysman-agent:latest
+    profiles: [setup]
+    entrypoint: [/bin/sh, /scripts/create-demo-certs.sh]
+    volumes:
+      - agent-certs:/certs
+      - ./docker/create-demo-certs.sh:/scripts/create-demo-certs.sh:ro
+
+volumes:
+  agent-data:
+  agent-certs:
+
+networks:
+  agent-net:
+    ipam:
+      config:
+        - subnet: 172.30.86.0/24

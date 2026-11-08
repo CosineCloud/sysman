@@ -1,0 +1,18 @@
+services:
+  sysman:
+    image: ghcr.io/cosinecloud/sysman:latest
+    build:
+      context: .
+      target: sysman
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - sysman-data:/data
+    stop_grace_period: 45s
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  sysman-data:
