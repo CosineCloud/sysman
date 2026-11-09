@@ -4,9 +4,10 @@ A local Python agent control center with light/dark themes, process lifecycle co
 
 ## Run
 
-Requires Python 3.10+ on macOS or Linux. No third-party packages required.
+Requires Python 3.10+ on macOS or Linux. Install `requirements.txt` for encrypted OuthMan account storage.
 
 ```sh
+python3 -m pip install -r requirements.txt
 python3 server.py
 ```
 
@@ -16,7 +17,7 @@ The included Email router and Backup agent are stopped integration examples. The
 
 Create agents through Add agent. Manage opens each agent’s own process health, counters and metric graphs. Configuration uses native form controls; raw JSON stays hidden until requested. Agent logs and the main Logs view offer full retained JSON downloads, with search and agent/level filters in the main view. Use agent details for source upload and backups. See [AGENT_INTEGRATION.md](AGENT_INTEGRATION.md) for the runner contract and integration guide.
 
-The server binds to loopback and rejects cross-origin API calls. This is a single-user local tool without authentication; do not expose it publicly. Uploaded Python is trusted code running with your user's permissions.
+The server binds to loopback and rejects cross-origin API calls. OuthMan linking/login is mandatory; see [AUTHENTICATION.md](AUTHENTICATION.md) to configure credentials and allowed operators. Missing configuration locks the dashboard. Uploaded Python is trusted code running with your user's permissions.
 
 ## Tests
 
@@ -31,3 +32,7 @@ Run `python3 sample_agent/runner.py --init` once, save the generated ID/key, the
 ## Raspberry Pi / Docker
 
 See [deployment.md](deployment.md) to pull ARM64 or ARM/v7 images, run SysMan and the real backup-agent container, choose agent icons, and configure timezone-aware start/stop schedules. SysMan controls the worker inside each running runner container; it does not stop Docker containers.
+
+## OuthMan login
+
+Read [AUTHENTICATION.md](AUTHENTICATION.md) before upgrading: configure `.env`, link an existing approved OuthMan account, then sign in with a fresh code. Operator sessions protect all agent APIs, logs/downloads and code updates. Protect and back up the separate authentication-key volume together with the encrypted account database.

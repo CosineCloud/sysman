@@ -1,0 +1,2 @@
+# Docker uses the architecture-native Debian python3-cryptography package.
+cryptography>=38,<51

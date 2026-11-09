@@ -98,10 +98,17 @@ class LogsApiTests(unittest.TestCase):
         handler.command = 'GET'
         handler.path = path
         handler.headers = {'Host': 'localhost:8765'}
+        from unittest.mock import patch
+        from outhman_auth import AuthService
+        from tests.auth_support import config, Provider
+        auth = AuthService(Path(self.temp.name)/'auth', Path(self.temp.name)/'secrets/key', config(), Provider().transport)
+        record, cookie = auth.browser()
+        record['user'] = {'username': 'alice'}
+        handler.headers['Cookie'] = 'sysman_session='+cookie
         handler.request_version = 'HTTP/1.1'
         handler.requestline = 'GET ' + path + ' HTTP/1.1'
         handler.wfile = io.BytesIO()
-        handler.handle_api()
+        with patch.object(server, 'AUTH', auth): handler.handle_api()
         headers, body = handler.wfile.getvalue().split(b'\r\n\r\n', 1)
         return headers.decode(), json.loads(body)
 

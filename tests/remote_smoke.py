@@ -1,5 +1,6 @@
 """Optional live curl integration check: python3 tests/remote_smoke.py."""
 import json
+from http.cookies import SimpleCookie
 from pathlib import Path
 import subprocess
 import sys
@@ -13,14 +14,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import server
 from remote_agent import curl_request
 from sample_agent import runner
+from outhman_auth import AuthService
+from tests.auth_support import Provider, config as auth_config, PASSWORD
+
+SESSION_COOKIE = None
+CSRF_TOKEN = None
 
 
 def local_call(port, method, path, data=None):
+    global SESSION_COOKIE, CSRF_TOKEN
     config = f'url = "http://127.0.0.1:{port}{path}"\nrequest = "{method}"\n'
+    if SESSION_COOKIE:
+        config += 'header = ' + json.dumps('Cookie: '+SESSION_COOKIE) + '\n'
+    if CSRF_TOKEN and method != 'GET':
+        config += 'header = ' + json.dumps('X-CSRF-Token: '+CSRF_TOKEN) + '\n'
     if data is not None:
         config += 'header = "Content-Type: application/json"\ndata-binary = ' + json.dumps(json.dumps(data)) + '\n'
-    result = subprocess.run(['curl', '--disable', '--silent', '--show-error', '--fail', '--noproxy', '*', '--max-time', '20', '--config', '-'], input=config, text=True, capture_output=True, check=True)
-    return json.loads(result.stdout)
+    result = subprocess.run(['curl', '--disable', '--silent', '--show-error', '--fail', '--noproxy', '*', '--max-time', '20', '--dump-header', '-', '--config', '-'], input=config, text=True, capture_output=True, check=True)
+    headers, body = result.stdout.split('\n\n',1)
+    for line in headers.splitlines():
+        if line.lower().startswith('set-cookie:'):
+            SESSION_COOKIE = line.split(':',1)[1].strip().split(';',1)[0]
+    payload = json.loads(body)
+    if 'csrf_token' in payload: CSRF_TOKEN = payload['csrf_token']
+    return payload
 
 
 def wait_for(predicate):
@@ -42,10 +59,26 @@ def run():
         agent_http = ThreadingHTTPServer(('127.0.0.1', 0), runner.make_handler(worker, security))
         sysman_http = ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
         for api in (agent_http, sysman_http): threading.Thread(target=api.serve_forever, daemon=True).start()
+        provider = Provider()
+        provider_http = ThreadingHTTPServer(('127.0.0.1',0), provider.handler())
+        threading.Thread(target=provider_http.serve_forever,daemon=True).start()
+        old_auth = server.AUTH
+        server.AUTH = AuthService(Path(root)/'accounts',Path(root)/'secrets/key',auth_config(f'http://127.0.0.1:{provider_http.server_port}'))
         old_data, old_agents = server.DATA, server.AGENTS
         server.DATA, server.AGENTS = Path(root) / 'platform', {}
         server.DATA.mkdir()
         try:
+            global SESSION_COOKIE, CSRF_TOKEN
+            SESSION_COOKIE = CSRF_TOKEN = None
+            session = local_call(sysman_http.server_port,'GET','/api/auth/session')
+            assert not session['authenticated']
+            credentials = {'username':'alice','password':PASSWORD,'code':'012345'}
+            linked = local_call(sysman_http.server_port,'POST','/api/auth/enroll',credentials)
+            assert linked['linked']
+            provider.issue()
+            logged_in = local_call(sysman_http.server_port,'POST','/api/auth/login',credentials)
+            assert logged_in['authenticated']
+            assert 'user_key' not in json.dumps(logged_in) and 'auth_pin' not in json.dumps(logged_in)
             connection = dict(agent_id=identifier, security_key=key, host='127.0.0.1', port=agent_http.server_port, scheme='http')
             try:
                 curl_request({**connection, 'security_key': '0'*16})
@@ -89,13 +122,15 @@ def run():
             assert worker.status == 'stopped', 'Remote schedule did not stop the worker through curl'
             assert service.state['last_action'] == 'stop'
             local_call(sysman_http.server_port, 'PUT', prefix+'/schedule', {**DEFAULT_SCHEDULE, 'enabled': False})
-            print('PASS: curl authentication, registration, config, actual ZIP backup, pause/resume, update, restore, restart/stop, combined logs, backup deletion, saved icon and scheduled remote start/stop; no credentials exposed.')
+            logged_out = local_call(sysman_http.server_port,'POST','/api/auth/logout',{})
+            assert not logged_out['authenticated']
+            print('PASS: OuthMan mock-provider enrollment, verify/confirm, CSRF/session/logout; curl authentication, registration, config, actual ZIP backup, pause/resume, update, restore, restart/stop, combined logs, backup deletion, saved icon and scheduled remote start/stop; no credentials exposed.')
         finally:
             for agent in server.AGENTS.values():
                 if hasattr(agent, 'schedule_service'): agent.schedule_service.stop()
                 agent.stop()
             worker.stop()
-            for api in (agent_http, sysman_http): api.shutdown(); api.server_close()
-            server.DATA, server.AGENTS = old_data, old_agents
+            for api in (agent_http, sysman_http, provider_http): api.shutdown(); api.server_close()
+            server.DATA, server.AGENTS, server.AUTH = old_data, old_agents, old_auth
 
 if __name__ == '__main__': run()

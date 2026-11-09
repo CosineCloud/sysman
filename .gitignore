@@ -10,3 +10,14 @@ sample_agent/demo_source/
 sample_agent/backup_output/
 sample_agent/backup-state.json
 sample_agent/backups/
+
+.env
+.env.*
+!.env.example
+.sysman-secrets/
+*.key
+*.sqlite3
+*.sqlite3-journal
+GITHUB_API_TOKEN.md
+
+.venv/

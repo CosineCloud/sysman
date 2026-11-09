@@ -4,15 +4,26 @@ services:
     build:
       context: .
       target: sysman
+    environment:
+      OUTHMAN_BASE_URL: ${OUTHMAN_BASE_URL:-}
+      OUTHMAN_APP_ID: ${OUTHMAN_APP_ID:-}
+      OUTHMAN_APP_SECRET: ${OUTHMAN_APP_SECRET:-}
+      OUTHMAN_APP_SECRET_FILE: ${OUTHMAN_APP_SECRET_FILE:-}
+      SYSMAN_ALLOWED_USERS: ${SYSMAN_ALLOWED_USERS:-}
+      SYSMAN_PUBLIC_ORIGIN: ${SYSMAN_PUBLIC_ORIGIN:-}
+      SYSMAN_COOKIE_SECURE: ${SYSMAN_COOKIE_SECURE:-false}
+      OUTHMAN_ALLOW_INSECURE_HTTP: ${OUTHMAN_ALLOW_INSECURE_HTTP:-false}
     init: true
     restart: unless-stopped
     ports:
       - "127.0.0.1:8765:8765"
     volumes:
       - sysman-data:/data
+      - sysman-auth-key:/auth-key
     stop_grace_period: 45s
     security_opt:
       - no-new-privileges:true
 
 volumes:
   sysman-data:
+  sysman-auth-key:

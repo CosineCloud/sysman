@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in — SysMan</title>
+  <link rel="stylesheet" href="/login.css">
+</head>
+<body>
+  <main class="login-layout">
+    <section class="welcome" aria-label="SysMan workspace">
+      <a class="brand" href="/login"><span class="brandmark">S</span>SysMan</a>
+      <div class="welcome-copy"><span class="eyebrow">YOUR AGENT COMMAND CENTER</span><h1>Every agent.<br>One trusted workspace.</h1><p>Keep your agents, schedules, and everyday operations together. Sign in with your OuthMan account to take control.</p></div>
+      <div class="welcome-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/></svg><span>Account verification by OuthMan</span></div>
+    </section>
+    <section class="login-section" aria-labelledby="loginTitle">
+      <div class="login-card">
+        <div class="card-head"><div class="eyebrow">WELCOME TO SYSMAN</div><button type="button" id="theme" aria-label="Switch color theme">☾</button></div>
+        <h2 id="loginTitle">Welcome back.</h2>
+        <p id="modeDescription" class="description">Sign in to your agent workspace.</p>
+        <div class="mode-tabs" role="tablist" aria-label="Account access">
+          <button id="signInTab" type="button" role="tab" aria-selected="true" aria-controls="authPanel" data-mode="login">Sign in</button>
+          <button id="linkTab" type="button" role="tab" aria-selected="false" aria-controls="authPanel" data-mode="enroll" tabindex="-1">Link account</button>
+        </div>
+        <div id="setupNotice" class="notice" role="status" hidden>OuthMan sign-in is not configured yet. Ask your SysMan operator to finish the OuthMan setup.</div>
+        <p id="success" class="notice success" role="status" hidden></p>
+        <div id="authPanel" role="tabpanel" aria-labelledby="signInTab">
+          <form id="authForm">
+            <fieldset id="authFields" disabled>
+              <label for="username">OuthMan username or email</label>
+              <input id="username" name="username" autocomplete="username" required maxlength="254" placeholder="Your OuthMan username">
+              <label for="password">Password</label>
+              <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="1024" placeholder="Your OuthMan password">
+              <label for="code">Six-digit code</label>
+              <input id="code" class="code-input" name="code" inputmode="numeric" autocomplete="one-time-code" required pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="000000" aria-describedby="codeHelp">
+              <p id="codeHelp" class="field-help">Generate a fresh code in OuthMan before continuing.</p>
+              <button id="submitAuth" class="primary" type="submit">Sign in to SysMan <span aria-hidden="true">→</span></button>
+            </fieldset>
+            <p id="authError" class="error" role="alert" hidden></p>
+          </form>
+        </div>
+        <p id="linkHelp" class="footnote">First visit? Link your approved OuthMan account, then sign in with a new code.</p>
+        <p class="session-note" id="connectionState" role="status">Checking sign-in service…</p>
+      </div>
+      <footer>SysMan <span>·</span> Your independent agents, connected.</footer>
+    </section>
+  </main>
+  <script src="/login.js"></script>
+</body>
+</html>

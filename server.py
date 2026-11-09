@@ -1,9 +1,11 @@
 """SysMan: local process supervisor and dependency-free HTTP API."""
 import ast
+from http.cookies import SimpleCookie
 import json
 import math
 import os
 import signal
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -15,11 +17,22 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 from remote_agent import RemoteAgent, connection_fields
 from scheduling import Scheduler, ICONS
+from outhman_auth import AuthService, AuthConfig, AuthError
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('SYSMAN_DATA_DIR', str(ROOT / 'agents')))
 LOCK = threading.RLock()
 STARTED = time.time()
+AUTH = None
+AUTH_LOCK = threading.Lock()
+
+def auth_service():
+    global AUTH
+    with AUTH_LOCK:
+        if AUTH is None:
+            AUTH = AuthService(DATA / 'auth', Path(os.environ.get('SYSMAN_AUTH_KEY_FILE', str(ROOT / '.sysman-secrets' / 'outhman.key'))))
+        return AUTH
+
 SAMPLE_DEFAULTS = {'interval': 5, 'logging_enabled': True, 'log_level': 'info', 'labels': [], 'start_message': 'Agent started'}
 SAMPLE = '''CONFIG_SCHEMA = {
     "type": "object",
@@ -285,10 +298,30 @@ def register_remote(data):
 
 
 class Handler(BaseHTTPRequestHandler):
+    def send_auth_headers(self):
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('Referrer-Policy', 'same-origin')
+        self.send_header('Content-Security-Policy', "frame-ancestors 'none'")
+        token = getattr(self, 'new_cookie', None)
+        if token:
+            secure = '; Secure' if auth_service().config.secure_cookie else ''
+            self.send_header('Set-Cookie', f'sysman_session={token}; HttpOnly; SameSite=Strict; Path=/{secure}')
+
+    def browser_session(self):
+        cookie = SimpleCookie()
+        try: cookie.load(self.headers.get('Cookie', ''))
+        except Exception: pass
+        token = cookie['sysman_session'].value if 'sysman_session' in cookie else None
+        record, replacement = auth_service().browser(token)
+        if replacement: self.new_cookie = replacement
+        return record
+
     def reply(self, value, status=200, filename=None):
         body = json.dumps(value, allow_nan=False).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
+        self.send_auth_headers()
         if filename:
             self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
         self.send_header('Content-Length', str(len(body)))
@@ -298,19 +331,45 @@ class Handler(BaseHTTPRequestHandler):
     def handle_api(self):
         # Local dashboard is same-origin only. Block cross-origin writes / DNS rebinding.
         host = self.headers.get('Host', '')
-        if host.split(':')[0] not in ('localhost', '127.0.0.1'):
-            return self.reply({'error': 'Localhost access only'}, 403)
+        configured_origin = auth_service().config.public_origin
+        public_host = urlparse(configured_origin).netloc if configured_origin else None
+        if host.split(':')[0] not in ('localhost', '127.0.0.1') and host != public_host:
+            return self.reply({'error': 'Host is not allowed'}, 403)
         origin = self.headers.get('Origin')
-        if origin and origin != 'http://' + host:
+        expected_origin = configured_origin if public_host == host else 'http://' + host
+        if origin and origin != expected_origin:
             return self.reply({'error': 'Cross-origin requests are disabled'}, 403)
         try:
             path = [unquote(p) for p in urlparse(self.path).path.split('/') if p]
             data = {}
             if self.command in ('POST', 'PUT'):
                 length = int(self.headers.get('Content-Length', 0))
-                if not 0 <= length <= 2_000_000: raise ValueError('Invalid request size')
+                limit = 8191 if path[:2] == ['api', 'auth'] else 2_000_000
+                if not 0 <= length <= limit: raise ValueError('Invalid request size')
                 data = json.loads(self.rfile.read(length) or b'{}')
                 if not isinstance(data, dict): raise ValueError('JSON object required')
+            if path == ['api', 'health'] and self.command == 'GET':
+                return self.reply({'status': 'healthy', 'python': sys.version.split()[0], 'uptime': int(time.time()-STARTED)})
+            service = auth_service()
+            record = self.browser_session()
+            if path == ['api', 'auth', 'session'] and self.command == 'GET':
+                return self.reply(service.public_session(record))
+            if path[:2] != ['api', 'auth'] and not service.public_session(record)['authenticated']:
+                return self.reply({'error': 'Sign in with OuthMan to continue.'}, 401)
+            if self.command != 'GET':
+                service.csrf(record, self.headers.get('X-CSRF-Token'))
+            if path[:2] == ['api', 'auth']:
+                if self.command != 'POST': return self.reply({'error': 'Not found'}, 404)
+                if path[2:] == ['logout']:
+                    replacement, token = service.logout(record)
+                    self.new_cookie = token
+                    return self.reply(service.public_session(replacement))
+                if path[2:] not in (['enroll'], ['login']): return self.reply({'error': 'Not found'}, 404)
+                service.limit(getattr(self, 'client_address', ('unknown',))[0], str(data.get('username', ''))[:254])
+                if path[2:] == ['enroll']: return self.reply(service.enroll(data), 201)
+                response, token = service.login(data, record)
+                self.new_cookie = token
+                return self.reply(response)
             if path == ['api', 'agents'] and self.command == 'POST' and data.get('type') == 'remote':
                 return self.reply(register_remote(data).snapshot(), 201)
             managed = AGENTS.get(path[2]) if len(path) >= 3 and path[:2] == ['api', 'agents'] else None
@@ -335,8 +394,6 @@ class Handler(BaseHTTPRequestHandler):
                 target = '/api/agent/' + '/'.join(quote(part, safe='') for part in tail)
                 return self.reply(remote.request(self.command, target, data if self.command != 'DELETE' else None))
             with LOCK:
-                if path == ['api', 'health'] and self.command == 'GET':
-                    return self.reply({'status': 'healthy', 'python': sys.version.split()[0], 'uptime': int(time.time()-STARTED)})
                 if path == ['api', 'logs'] and self.command == 'GET':
                     logs = [{**entry, 'agent_id': a.meta['id'], 'agent_name': a.meta['name']} for a in AGENTS.values() for entry in a.logs]
                     logs.sort(key=lambda entry: entry['time'], reverse=True)
@@ -369,16 +426,34 @@ class Handler(BaseHTTPRequestHandler):
                     agent.log(f'Backup deleted: {tail[1]}')
                 else: return self.reply({'error': 'Not found'}, 404)
                 return self.reply(agent.snapshot())
-        except (ValueError, SyntaxError, OSError, TypeError) as error:
+        except AuthError as error:
+            self.reply({'error': str(error)}, error.status)
+        except (ValueError, SyntaxError, OSError, TypeError, sqlite3.Error) as error:
+            if urlparse(self.path).path.startswith('/api/auth/'):
+                return self.reply({'error': 'Authentication could not complete. Contact the operator before retrying enrollment.'}, 503)
             self.reply({'error': str(error)}, 400)
 
     def do_GET(self):
         if urlparse(self.path).path.startswith('/api/'):
             return self.handle_api()
-        if urlparse(self.path).path in ('/AGENT_INTEGRATION.md', '/REMOTE_AGENTS.md', '/deployment.md'):
+        requested = urlparse(self.path).path
+        public_assets = ('/login', '/login.html', '/login.js', '/login.css', '/style.css', '/auth-session.js')
+        if requested not in public_assets:
+            try:
+                if not auth_service().public_session(self.browser_session())['authenticated']:
+                    self.send_response(303)
+                    self.send_auth_headers()
+                    self.send_header('Location', '/login')
+                    self.end_headers()
+                    return
+            except AuthError as error:
+                return self.reply({'error': str(error)}, error.status)
+        if requested == '/login': self.path = '/login.html'
+        if urlparse(self.path).path in ('/AGENT_INTEGRATION.md', '/REMOTE_AGENTS.md', '/deployment.md', '/AUTHENTICATION.md'):
             body = (ROOT / urlparse(self.path).path.lstrip('/')).read_bytes()
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.send_auth_headers()
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -390,6 +465,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         body = path.read_bytes()
         self.send_response(200)
+        self.send_auth_headers()
         self.send_header('Content-Type', {'.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript'}.get(path.suffix, 'application/octet-stream'))
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
@@ -413,6 +489,7 @@ def initialize():
         create_agent('Backup agent', 'Schedule and monitor your backup jobs. Example agent — add your own logic.')
 
 if __name__ == '__main__':
+    auth_service()
     initialize()
     server = ThreadingHTTPServer((os.environ.get('SYSMAN_BIND', '127.0.0.1'), int(os.environ.get('PORT', '8765'))), Handler)
     print(f'SysMan running at http://localhost:{server.server_port}', flush=True)

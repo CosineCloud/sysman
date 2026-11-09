@@ -4,7 +4,7 @@
 
 Use Raspberry Pi OS / Debian on a Raspberry Pi with ARMv7 or ARM64 support. A 64-bit OS on a Pi 3, 4 or 5 is recommended. Pi 1 and original Pi Zero ARMv6 systems are not supported by these images.
 
-Published images contain `linux/arm64`, `linux/arm/v7` and `linux/amd64` manifests. Docker selects the image matching the Pi's OS architecture. SysMan and the sample agent use Python's standard library, curl, OpenSSL and Debian timezone/CA packages; there are no pip wheels or x86-only libraries. Extra dependencies you add to your own agents must support that agent's architecture.
+Published images contain `linux/arm64`, `linux/arm/v7` and `linux/amd64` manifests. Docker selects the image matching the Pi's OS architecture. SysMan and the sample agent use Debian's native Python, python3-cryptography, curl, OpenSSL and timezone/CA packages; there are no x86-only wheels or Rust builds in the image. Extra dependencies you add to your own agents must support that agent's architecture.
 
 Check your system:
 
@@ -54,11 +54,16 @@ On the Pi:
 ```sh
 git clone https://github.com/CosineCloud/sysman.git
 cd sysman
+cp .env.example .env
+chmod 600 .env
+nano .env
 docker compose pull
 docker compose up -d
 docker compose ps
 curl --fail http://127.0.0.1:8765/api/health
 ```
+
+Before starting, configure the OuthMan URL, app ID/secret and allowed usernames in `.env` as described in [AUTHENTICATION.md](AUTHENTICATION.md). Missing settings leave login locked; there is no anonymous fallback.
 
 The UI is bound to the Pi's loopback address. From your laptop, replace `pi-user@PI_IP` with your Pi's actual SSH username and IP:
 
@@ -68,7 +73,7 @@ ssh -L 8765:127.0.0.1:8765 pi-user@PI_IP
 
 Keep that SSH session open and visit http://localhost:8765 on the laptop. If you use a desktop browser on the Pi, open the same URL directly there.
 
-SysMan is a single-user local control service with trusted Python-code upload. The supplied deployment deliberately uses SSH tunneling rather than exposing an unauthenticated administrative UI on the LAN or internet. Docker does not need privileged mode or the host Docker socket. The dashboard uses the `sysman-data` named volume for agent registrations, keys, schedules, configurations, logs and code backups.
+SysMan requires OuthMan login and has a shared operator workspace with trusted Python-code upload. The supplied deployment uses SSH tunneling for transport protection as well. First link your account, then sign in with a new OuthMan code; see [AUTHENTICATION.md](AUTHENTICATION.md). Docker does not need privileged mode or the host Docker socket. The dashboard uses `sysman-data` for registrations, encrypted account bindings, schedules, configurations, logs and code backups, and a separate `sysman-auth-key` volume for the account encryption key. Back up both; the encrypted account records cannot be recovered without the matching key.
 
 ## Add a complete Dockerized test agent
 
@@ -160,7 +165,7 @@ docker compose -f compose.yaml -f compose.demo.yaml logs --tail=100
 
 Agent work logs are available in SysMan's Logs UI and download buttons. Container logs show runner/service startup messages. Use `docker compose stop` (or the overlay equivalent) to stop containers without removing volumes. Do not use `down -v` unless you intend to erase the stored data and credentials.
 
-Keep copies of both named data volumes and the certificate volume when backing up the deployment. SysMan's remote connection file contains the usable key, while the runner keeps its hash. Retain old code backups until you manually delete them. Pin an older published SHA tag and recreate containers to roll back an image; use Manage → Backups to roll back an agent's main.py independently.
+Keep copies of the SysMan data, separate SysMan auth-key, agent data and certificate volumes when backing up the deployment. SysMan's remote connection file contains the usable key, while the runner keeps its hash. Retain old code backups until you manually delete them. Pin an older published SHA tag and recreate containers to roll back an image; use Manage → Backups to roll back an agent's main.py independently.
 
 ## Build locally if registry access is unavailable
 

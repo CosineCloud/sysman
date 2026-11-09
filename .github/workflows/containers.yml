@@ -25,9 +25,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: python3 -m pip install -r requirements.txt
       - run: python3 -m unittest discover -s tests -v
       - run: python3 tests/remote_smoke.py
-      - run: node --check static/app.js && node --check static/config-form.js
+      - run: node --check static/app.js && node --check static/config-form.js && node --check static/login.js && node --check static/auth-session.js
       - run: docker compose config --quiet && docker compose -f compose.yaml -f compose.demo.yaml config --quiet
 
   publish:
@@ -81,5 +82,5 @@ jobs:
             manifest=$(python3 -c 'import json,sys; p=sys.argv[1].split("/"); print(next(m["digest"] for m in json.load(sys.stdin)["manifests"] if m["platform"].get("os")==p[0] and m["platform"].get("architecture")==p[1] and (len(p)<3 or m["platform"].get("variant")==p[2])))' "$architecture" < image-index.json)
             docker run --rm --platform "$architecture" --entrypoint python3 \
               "ghcr.io/cosinecloud/${{ matrix.image }}@$manifest" \
-              -c 'import platform,subprocess,server,scheduling; from zoneinfo import ZoneInfo; print(platform.machine()); print(ZoneInfo("America/Chicago")); subprocess.run(["curl","--version"],check=True)'
+              -c 'import platform,subprocess,server,scheduling,outhman_auth; from cryptography.fernet import Fernet; c=Fernet(Fernet.generate_key()); assert c.decrypt(c.encrypt(b"ARM auth test"))==b"ARM auth test"; from zoneinfo import ZoneInfo; print(platform.machine()); print(ZoneInfo("America/Chicago")); subprocess.run(["curl","--version"],check=True)'
           done
