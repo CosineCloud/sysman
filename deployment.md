@@ -54,16 +54,19 @@ On the Pi:
 ```sh
 git clone https://github.com/CosineCloud/sysman.git
 cd sysman
-cp .env.example .env
-chmod 600 .env
-nano .env
 docker compose pull
 docker compose up -d
 docker compose ps
 curl --fail http://127.0.0.1:8765/api/health
 ```
 
-Before starting, configure the OuthMan URL, app ID/secret and allowed usernames in `.env` as described in [AUTHENTICATION.md](AUTHENTICATION.md). Missing settings leave login locked; there is no anonymous fallback.
+On first start, SysMan opens its **OuthMan configuration portal** automatically. Run this on the Pi to obtain the setup token:
+
+```sh
+docker compose exec sysman python3 setup_admin.py token
+```
+
+Paste the token into the portal with the OuthMan server URL, SysMan app ID/secret, and your allowed OuthMan username. Create the app credential in OuthMan first; details are in [AUTHENTICATION.md](AUTHENTICATION.md). Saving encrypted settings enables linking/login without a restart. There is no anonymous dashboard access. Existing correctly configured installations keep their current login.
 
 The UI is bound to the Pi's loopback address. From your laptop, replace `pi-user@PI_IP` with your Pi's actual SSH username and IP:
 

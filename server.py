@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from remote_agent import RemoteAgent, connection_fields
 from scheduling import Scheduler, ICONS
 from outhman_auth import AuthService, AuthConfig, AuthError
+from first_start import FirstStart, load_config
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('SYSMAN_DATA_DIR', str(ROOT / 'agents')))
@@ -30,7 +31,8 @@ def auth_service():
     global AUTH
     with AUTH_LOCK:
         if AUTH is None:
-            AUTH = AuthService(DATA / 'auth', Path(os.environ.get('SYSMAN_AUTH_KEY_FILE', str(ROOT / '.sysman-secrets' / 'outhman.key'))))
+            key_file = Path(os.environ.get('SYSMAN_AUTH_KEY_FILE', str(ROOT / '.sysman-secrets' / 'outhman.key')))
+            AUTH = AuthService(DATA / 'auth', key_file, load_config(DATA, key_file))
         return AUTH
 
 SAMPLE_DEFAULTS = {'interval': 5, 'logging_enabled': True, 'log_level': 'info', 'labels': [], 'start_message': 'Agent started'}
@@ -308,6 +310,9 @@ class Handler(BaseHTTPRequestHandler):
             secure = '; Secure' if auth_service().config.secure_cookie else ''
             self.send_header('Set-Cookie', f'sysman_session={token}; HttpOnly; SameSite=Strict; Path=/{secure}')
 
+    def first_start(self):
+        return FirstStart(auth_service().directory.parent, auth_service().key_file)
+
     def browser_session(self):
         cookie = SimpleCookie()
         try: cookie.load(self.headers.get('Cookie', ''))
@@ -344,7 +349,7 @@ class Handler(BaseHTTPRequestHandler):
             data = {}
             if self.command in ('POST', 'PUT'):
                 length = int(self.headers.get('Content-Length', 0))
-                limit = 8191 if path[:2] == ['api', 'auth'] else 2_000_000
+                limit = 32768 if path == ['api', 'auth', 'setup'] else (8191 if path[:2] == ['api', 'auth'] else 2_000_000)
                 if not 0 <= length <= limit: raise ValueError('Invalid request size')
                 data = json.loads(self.rfile.read(length) or b'{}')
                 if not isinstance(data, dict): raise ValueError('JSON object required')
@@ -353,13 +358,24 @@ class Handler(BaseHTTPRequestHandler):
             service = auth_service()
             record = self.browser_session()
             if path == ['api', 'auth', 'session'] and self.command == 'GET':
-                return self.reply(service.public_session(record))
+                response = service.public_session(record)
+                response['setup_required'] = self.first_start().required(service)
+                return self.reply(response)
+            if path == ['api', 'auth', 'setup'] and self.command == 'GET':
+                return self.reply(self.first_start().status(service, record))
             if path[:2] != ['api', 'auth'] and not service.public_session(record)['authenticated']:
                 return self.reply({'error': 'Sign in with OuthMan to continue.'}, 401)
             if self.command != 'GET':
                 service.csrf(record, self.headers.get('X-CSRF-Token'))
             if path[:2] == ['api', 'auth']:
                 if self.command != 'POST': return self.reply({'error': 'Not found'}, 404)
+                if path[2:] == ['setup']:
+                    service.limit(getattr(self, 'client_address', ('unknown',))[0], 'first-start-setup')
+                    global AUTH
+                    manager = self.first_start()
+                    with AUTH_LOCK:
+                        AUTH = manager.save(service, data)
+                    return self.reply({'configured': True, 'setup_required': False, 'message': 'Configuration saved. Link your OuthMan account, then sign in with a new code.'})
                 if path[2:] == ['logout']:
                     replacement, token = service.logout(record)
                     self.new_cookie = token
@@ -437,18 +453,20 @@ class Handler(BaseHTTPRequestHandler):
         if urlparse(self.path).path.startswith('/api/'):
             return self.handle_api()
         requested = urlparse(self.path).path
-        public_assets = ('/login', '/login.html', '/login.js', '/login.css', '/style.css', '/auth-session.js')
+        public_assets = ('/login', '/login.html', '/login.js', '/login.css', '/style.css', '/auth-session.js', '/setup', '/setup.html', '/setup.js', '/setup.css')
         if requested not in public_assets:
             try:
                 if not auth_service().public_session(self.browser_session())['authenticated']:
                     self.send_response(303)
                     self.send_auth_headers()
-                    self.send_header('Location', '/login')
+                    target = '/setup' if self.first_start().required(auth_service()) else '/login'
+                    self.send_header('Location', target)
                     self.end_headers()
                     return
             except AuthError as error:
                 return self.reply({'error': str(error)}, error.status)
         if requested == '/login': self.path = '/login.html'
+        if requested == '/setup': self.path = '/setup.html'
         if urlparse(self.path).path in ('/AGENT_INTEGRATION.md', '/REMOTE_AGENTS.md', '/deployment.md', '/AUTHENTICATION.md'):
             body = (ROOT / urlparse(self.path).path.lstrip('/')).read_bytes()
             self.send_response(200)

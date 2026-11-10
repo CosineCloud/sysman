@@ -1,6 +1,6 @@
 # OuthMan login for SysMan
 
-SysMan now requires OuthMan authentication. The login page and a minimal health endpoint are public; dashboard HTML, agent controls, configuration, source upload, schedules, agent metadata, logs/downloads, code backups and documentation routes require an authenticated SysMan session. Missing configuration never permits anonymous dashboard access.
+SysMan now requires OuthMan authentication. The login page, host-token-protected first-start portal and a minimal health endpoint are public; dashboard HTML, agent controls, configuration, source upload, schedules, agent metadata, logs/downloads, code backups and documentation routes require an authenticated SysMan session. Missing configuration never permits anonymous dashboard access.
 
 ## Configure OuthMan first
 
@@ -10,7 +10,49 @@ SysMan now requires OuthMan authentication. The login page and a minimal health 
 4. Add the SysMan backend's actual connecting IP/network to OuthMan's **API IP allowlist**. A Docker peer may be seen as the Pi or Docker gateway, depending on deployment. An empty OuthMan ACL denies all integration calls.
 5. Operators generate the six-digit, 60-second code in OuthMan. SysMan does not generate OuthMan codes or use authenticator-app TOTP.
 
-## Configure SysMan on the Raspberry Pi
+## Recommended: first-start configuration portal
+
+No environment-file editing is needed for an unconfigured installation. Update and start SysMan, then open the same browser address you use for its SSH tunnel:
+
+```sh
+git pull --ff-only
+docker compose pull sysman
+docker compose up -d sysman
+```
+
+SysMan opens **/setup** automatically when OuthMan has not been configured. On the Pi, from the checkout directory, retrieve the host-authorized setup token:
+
+```sh
+docker compose exec sysman python3 setup_admin.py token
+```
+
+Paste that token into the setup page along with:
+
+- OuthMan's reachable server URL (not the SysMan URL).
+- The app ID and app secret generated for SysMan in OuthMan.
+- Your canonical OuthMan username and any other allowed operator usernames.
+- The explicit trusted-private-network HTTP checkbox only if your OuthMan endpoint cannot use HTTPS.
+
+Save the form. Settings are encrypted in `/data/outhman-settings.enc` using the separate `/auth-key/outhman.key`. No restart is required. Saved portal settings take precedence over OuthMan credentials/URL/operator-list values in an older `.env`; public-origin and cookie settings still come from the environment. Neither the app secret nor setup token can be retrieved through the web API.
+
+The setup token is separate from the OuthMan app secret, user password, and six-digit login code. It is available only through host/container access, is not printed to container logs, and is removed after successful setup. The setup API closes once configured, rejects missing/incorrect tokens and CSRF values, and does not grant a session. The form is not offered over existing linked accounts or damaged/missing encryption-key storage; use operator recovery instead.
+
+After saving, SysMan takes you to **Link account**. Generate a code in OuthMan and link your account, then generate a **new** code and sign in. Saving configuration validates its format but does not prove OuthMan connectivity, group access or ACL authorization; linking performs that actual check.
+
+If you saved a wrong URL or app secret **before linking any accounts**, stop the service and reopen setup with a one-off container sharing its volumes:
+
+```sh
+docker compose stop sysman
+docker compose run --rm --no-deps --entrypoint python3 sysman setup_admin.py reopen
+docker compose up -d sysman
+docker compose exec sysman python3 setup_admin.py token
+```
+
+The old encrypted settings are retained as a `.enc.backup` file. Reopening refuses to run when linked accounts already exist, storage cannot be decrypted, or a complete environment configuration is still active. For linked-account or encryption-key problems use the recovery section below. Keep the service stopped during the one-off recovery command.
+
+For source-based local execution, use `python3 setup_admin.py token` on the SysMan host. To configure solely through environment variables instead, follow the advanced instructions below before starting; a correctly configured environment skips first-start setup.
+
+## Advanced: configure through environment variables on the Raspberry Pi
 
 From the checkout:
 

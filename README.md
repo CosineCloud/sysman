@@ -35,4 +35,4 @@ See [deployment.md](deployment.md) to pull ARM64 or ARM/v7 images, run SysMan an
 
 ## OuthMan login
 
-Read [AUTHENTICATION.md](AUTHENTICATION.md) before upgrading: configure `.env`, link an existing approved OuthMan account, then sign in with a fresh code. Operator sessions protect all agent APIs, logs/downloads and code updates. Protect and back up the separate authentication-key volume together with the encrypted account database.
+Read [AUTHENTICATION.md](AUTHENTICATION.md) before upgrading: the first-start portal collects OuthMan settings using a setup token retrieved with `docker compose exec sysman python3 setup_admin.py token`. Then link an existing approved OuthMan account and sign in with a fresh code. Advanced environment configuration remains supported. Operator sessions protect all agent APIs, logs/downloads and code updates. Protect and back up the separate authentication-key volume together with the encrypted account database.

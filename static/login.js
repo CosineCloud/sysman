@@ -45,9 +45,11 @@
     if (!response.ok) throw Error('Unable to check the sign-in service. Refresh to try again.');
     const data = await response.json();
     if (data.authenticated === true) { location.replace('/'); return false; }
+    if (data.setup_required === true) { location.replace('/setup'); return false; }
     csrfToken = typeof data.csrf_token === 'string' ? data.csrf_token : '';
     configured = data.configured === true && Boolean(csrfToken);
     $('#setupNotice').hidden = data.configured === true;
+    if (data.configured !== true) $('#setupNotice').textContent = 'Sign-in is unavailable. Ask the SysMan operator to check the saved OuthMan configuration and matching account database/encryption key.';
     $('#authFields').disabled = !configured;
     $('#connectionState').textContent = configured ? 'Use a new OuthMan code for each sign-in attempt.' : 'Waiting for OuthMan configuration.';
     return true;
@@ -94,5 +96,6 @@
       if (linked && configured) $('#password').focus();
     }
   };
+  if (new URLSearchParams(location.search).get('setup') === 'complete') { $('#success').textContent = 'Configuration saved. Select Link account to verify your OuthMan access, then sign in with a fresh code.'; $('#success').hidden = false; setMode('enroll'); }
   session().catch(error => { configured = false; $('#authFields').disabled = true; $('#connectionState').textContent = 'Sign-in service unavailable.'; showError(error.message); });
 })();

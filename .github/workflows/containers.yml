@@ -28,7 +28,7 @@ jobs:
       - run: python3 -m pip install -r requirements.txt
       - run: python3 -m unittest discover -s tests -v
       - run: python3 tests/remote_smoke.py
-      - run: node --check static/app.js && node --check static/config-form.js && node --check static/login.js && node --check static/auth-session.js
+      - run: node --check static/app.js && node --check static/config-form.js && node --check static/login.js && node --check static/auth-session.js && node --check static/setup.js
       - run: docker compose config --quiet && docker compose -f compose.yaml -f compose.demo.yaml config --quiet
 
   publish:

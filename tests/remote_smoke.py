@@ -14,8 +14,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import server
 from remote_agent import curl_request
 from sample_agent import runner
-from outhman_auth import AuthService
-from tests.auth_support import Provider, config as auth_config, PASSWORD
+from outhman_auth import AuthService, AuthConfig
+from first_start import FirstStart
+from tests.auth_support import Provider, PASSWORD, APP_ID, APP_SECRET
 
 SESSION_COOKIE = None
 CSRF_TOKEN = None
@@ -63,15 +64,22 @@ def run():
         provider_http = ThreadingHTTPServer(('127.0.0.1',0), provider.handler())
         threading.Thread(target=provider_http.serve_forever,daemon=True).start()
         old_auth = server.AUTH
-        server.AUTH = AuthService(Path(root)/'accounts',Path(root)/'secrets/key',auth_config(f'http://127.0.0.1:{provider_http.server_port}'))
         old_data, old_agents = server.DATA, server.AGENTS
         server.DATA, server.AGENTS = Path(root) / 'platform', {}
         server.DATA.mkdir()
+        server.AUTH = AuthService(server.DATA/'auth',Path(root)/'secrets/key',AuthConfig({}))
         try:
             global SESSION_COOKIE, CSRF_TOKEN
             SESSION_COOKIE = CSRF_TOKEN = None
             session = local_call(sysman_http.server_port,'GET','/api/auth/session')
-            assert not session['authenticated']
+            assert not session['authenticated'] and session['setup_required']
+            status=local_call(sysman_http.server_port,'GET','/api/auth/setup')
+            assert status['setup_required']
+            token=FirstStart(server.DATA,server.AUTH.key_file,{}).token(server.AUTH)
+            saved=local_call(sysman_http.server_port,'POST','/api/auth/setup',{'setup_token':token,'base_url':f'http://127.0.0.1:{provider_http.server_port}','app_id':APP_ID,'app_secret':APP_SECRET,'allowed_users':['alice'],'allow_insecure_http':False})
+            assert saved['configured'] and not saved['setup_required']
+            session=local_call(sysman_http.server_port,'GET','/api/auth/session')
+            assert session['configured'] and not session['authenticated'] and not session['setup_required']
             credentials = {'username':'alice','password':PASSWORD,'code':'012345'}
             linked = local_call(sysman_http.server_port,'POST','/api/auth/enroll',credentials)
             assert linked['linked']
@@ -124,7 +132,7 @@ def run():
             local_call(sysman_http.server_port, 'PUT', prefix+'/schedule', {**DEFAULT_SCHEDULE, 'enabled': False})
             logged_out = local_call(sysman_http.server_port,'POST','/api/auth/logout',{})
             assert not logged_out['authenticated']
-            print('PASS: OuthMan mock-provider enrollment, verify/confirm, CSRF/session/logout; curl authentication, registration, config, actual ZIP backup, pause/resume, update, restore, restart/stop, combined logs, backup deletion, saved icon and scheduled remote start/stop; no credentials exposed.')
+            print('PASS: first-start portal encrypted setup; OuthMan mock-provider enrollment, verify/confirm, CSRF/session/logout; curl authentication, registration, config, actual ZIP backup, pause/resume, update, restore, restart/stop, combined logs, backup deletion, saved icon and scheduled remote start/stop; no credentials exposed.')
         finally:
             for agent in server.AGENTS.values():
                 if hasattr(agent, 'schedule_service'): agent.schedule_service.stop()

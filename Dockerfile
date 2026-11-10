@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
     && useradd --uid 10001 --create-home --shell /usr/sbin/nologin sysman \
     && mkdir -p /data /certs /auth-key && chown sysman:sysman /data /certs /auth-key
 WORKDIR /app
-COPY server.py agent_runner.py remote_agent.py scheduling.py outhman_auth.py auth_admin.py ./
+COPY server.py agent_runner.py remote_agent.py scheduling.py outhman_auth.py first_start.py auth_admin.py setup_admin.py ./
 
 FROM runtime AS agent
 COPY sample_agent/runner.py sample_agent/main.py ./sample_agent/

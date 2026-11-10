@@ -4,6 +4,7 @@ import getpass
 import os
 from pathlib import Path
 from outhman_auth import AuthService, password_hash
+from first_start import load_config
 
 
 def main():
@@ -12,7 +13,8 @@ def main():
     args = parser.parse_args()
     root = Path(__file__).resolve().parent
     data = Path(os.environ.get('SYSMAN_DATA_DIR', str(root/'agents')))
-    service = AuthService(data/'auth', Path(os.environ.get('SYSMAN_AUTH_KEY_FILE', str(root/'.sysman-secrets/outhman.key'))))
+    key_file = Path(os.environ.get('SYSMAN_AUTH_KEY_FILE', str(root/'.sysman-secrets/outhman.key')))
+    service = AuthService(data/'auth', key_file, load_config(data, key_file))
     service.ready()
     account = service.lookup(args.username.strip())
     if not account: parser.error('No matching linked account; no records changed')

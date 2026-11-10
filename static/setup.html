@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>First-time setup — SysMan</title><link rel="stylesheet" href="/setup.css"></head>
+<body>
+<main class="setup-layout">
+  <aside class="setup-intro">
+    <a class="brand" href="/setup"><span class="brandmark">S</span>SysMan</a>
+    <div><span class="eyebrow">LET’S GET YOU CONNECTED</span><h1>Your workspace.<br>Your trusted access.</h1><p>Connect OuthMan once, then manage your agents with a verified account.</p></div>
+    <ol class="setup-steps">
+      <li><strong>Create the OuthMan app</strong><span>In OuthMan, create a SysMan app and save its app ID and secret. Assign the app and your approved account to the same access group. Allow the SysMan backend IP in OuthMan’s API allowlist.</span></li>
+      <li><strong>Unlock this setup</strong><span>Run this command on your Raspberry Pi, then paste its setup token into the form.</span><code>docker compose exec sysman python3 setup_admin.py token</code></li>
+      <li><strong>Link, then sign in</strong><span>After saving, link your existing OuthMan account. Generate a new six-digit code for the following sign-in.</span></li>
+    </ol>
+    <p class="intro-note">The setup token proves access to your SysMan host. It is separate from your OuthMan app secret and user password.</p>
+  </aside>
+  <section class="setup-section" aria-labelledby="setupTitle">
+    <div class="setup-card">
+      <div class="card-head"><span class="eyebrow">FIRST-TIME CONFIGURATION</span><button type="button" id="theme" aria-label="Switch color theme">☾</button></div>
+      <h2 id="setupTitle">Connect OuthMan.</h2><p class="description">Set up account verification for this SysMan workspace.</p>
+      <div id="setupUnavailable" class="notice" role="status" hidden></div>
+      <form id="setupForm">
+        <fieldset id="setupFields" disabled>
+          <label for="setupToken">SysMan setup token</label><input id="setupToken" type="password" autocomplete="off" spellcheck="false" required pattern="[A-Za-z0-9_-]{43}" minlength="43" maxlength="43" aria-describedby="tokenHelp"><p class="field-help" id="tokenHelp">Get this from the command shown on the left. Never share it.</p>
+          <label for="baseUrl">OuthMan server URL</label><input id="baseUrl" type="url" inputmode="url" autocomplete="off" required placeholder="https://outhman.example.com" aria-describedby="urlHelp"><p class="field-help" id="urlHelp">Use an address reachable from the SysMan container. Its 127.0.0.1 address points to SysMan itself.</p>
+          <label for="appId">OuthMan app ID</label><input id="appId" autocomplete="off" spellcheck="false" required pattern="[A-Fa-f0-9]{16}" minlength="16" maxlength="16" placeholder="16 hexadecimal characters">
+          <label for="appSecret">OuthMan app secret</label><input id="appSecret" type="password" autocomplete="off" required pattern="[A-Fa-f0-9]{32}" minlength="32" maxlength="32" aria-describedby="secretHelp"><p class="field-help" id="secretHelp">The secret issued when you created the SysMan app in OuthMan, not your user password.</p>
+          <label for="allowedUsers">Allowed SysMan operators</label><textarea id="allowedUsers" required rows="3" maxlength="25500" spellcheck="false" placeholder="Your canonical OuthMan username" aria-describedby="usersHelp"></textarea><p class="field-help" id="usersHelp">One username per line, or separated by commas. Every listed user can manage all agents.</p>
+          <label class="checkbox-row" for="allowHttp"><input id="allowHttp" type="checkbox"><span>Allow HTTP on a trusted private network</span></label><p class="field-help">Only enable this when HTTPS is unavailable on an isolated network. Passwords and app credentials then travel without transport encryption.</p>
+          <button type="submit" class="primary" id="saveSetup">Save & continue to sign in <span aria-hidden="true">→</span></button>
+        </fieldset>
+        <p id="setupError" class="error" role="alert" hidden></p>
+      </form>
+      <p class="footnote">Settings are encrypted on the server. Saving does not verify OuthMan access; linking your account completes that check.</p>
+      <p class="session-note" id="setupState" role="status">Checking first-time setup…</p>
+      <a id="continueLogin" class="continue-link" href="/login" hidden>Continue to sign in →</a>
+    </div>
+    <footer>SysMan <span>·</span> Your independent agents, connected.</footer>
+  </section>
+</main>
+<script src="/setup.js"></script>
+</body></html>
